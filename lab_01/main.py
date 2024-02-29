@@ -1,18 +1,26 @@
-from typing import *
+"""
+Здесь много дублирования кода, что может вызвать страдания у любителей программирования
+Увы в этом курсе плевать на чистоту кода
+"""
+
+from copy import deepcopy
+
+from typing import Optional
 from copy import copy
 import numpy as np
 
-DEBUG = True
+DEBUG = False
+EPS = 1e-6
 
 
 class DataSlice:
     def __init__(self, x: float, y: float,
-                 derivative: float,
-                 double_derivative: float) -> None:
+                 derivative: Optional[float],
+                 double_derivative: Optional[float]) -> None:
         self.x: float = x
         self.y: float = y
-        self.derivative: float = derivative
-        self.double_derivative: float = double_derivative
+        self.derivative: float | None = derivative
+        self.double_derivative: float | None = double_derivative
 
 
 class Model:
@@ -53,7 +61,7 @@ class Model:
             index_low -= index_high - len(self.data_list) + 1
             index_high = len(self.data_list) - 1
 
-        coeff_table: List[List[float]] = [
+        coeff_table: list[list[float]] = [
             [s.x for s in self.data_list[index_low: index_high]],
             [s.y for s in self.data_list[index_low: index_high]],
         ]
@@ -84,50 +92,17 @@ class Model:
         xcoef: float = 1.0
 
         for i in range(self.newton_deg):
-            # if DEBUG:
-            #     print(f"xcoef {i} : {xcoef:.3} * ({x} - {coeff_table[0][i]})")
             xcoef *= x - coeff_table[0][i]
             res += coeff_table[i+2][0] * xcoef
 
         return res
 
-    def transpose_matrix(self, matrix):
-        return [[matrix[j][i] for j in range(len(matrix))] for i in range(len(matrix[0]))]
-
-    def matrix_minor(self, matrix, i, j):
-        return [row[:j] + row[j+1:] for row in (matrix[:i]+matrix[i+1:])]
-
-    def matrix_determinant(self, matrix):
-        if len(matrix) == 2:
-            return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0]
-
-        determinant = 0
-        for c in range(len(matrix)):
-            determinant += ((-1) ** c) * matrix[0][c] * \
-                self.matrix_determinant(self.matrix_minor(matrix, 0, c))
-        return determinant
-
-    def matrix_inverse(self, matrix):
-        determinant = self.matrix_determinant(matrix)
-        if len(matrix) == 2:
-            return [[matrix[1][1] / determinant, -1 * matrix[0][1] / determinant],
-                    [-1 * matrix[1][0] / determinant, matrix[0][0] / determinant]]
-
-        cofactors = []
-        for r in range(len(matrix)):
-            cofactor_row = []
-            for c in range(len(matrix)):
-                minor = self.matrix_minor(matrix, r, c)
-                cofactor_row.append(((-1) ** (r + c)) *
-                                    self.matrix_determinant(minor))
-            cofactors.append(cofactor_row)
-        cofactors = self.transpose_matrix(cofactors)
-        for r in range(len(cofactors)):
-            for c in range(len(cofactors)):
-                cofactors[r][c] = cofactors[r][c] / determinant
-        return cofactors
-
     def approx_by_ermite(self, x):
+        if self.ermite_nodes == 0:
+            return print("Не определено кол-во точек для полинома Эрмита")
+        if len(self.data_list) < self.ermite_nodes:
+            return print("Для данного количества точек полинома Эрмита недостаточно входных данных функции")
+
         pos = 0
         while self.data_list[pos].x < x and pos < len(self.data_list):
             pos += 1
@@ -144,53 +119,61 @@ class Model:
             index_low -= index_high - len(self.data_list) + 1
             index_high = len(self.data_list) - 1
 
-        coeff_table: List[List[float]] = [
-            [s.x for s in self.data_list[index_low: index_high]],
-            [s.y for s in self.data_list[index_low: index_high]],
-            [s.derivative for s in self.data_list[index_low: index_high]],
-            [s.double_derivative for s in self.data_list[index_low: index_high]],
-        ]
+        nodes: list[DataSlice] = self.data_list[index_low: index_high]
 
-        coeffs = self.get_ermite_coeffs(coeff_table)
+        coeffs = self.get_ermite_coeffs(nodes)
 
         sum = 0
 
-        print(coeffs)
+        if DEBUG:
+            print(coeffs)
 
         for i in range(len(coeffs)):
             sum += coeffs[i] * (x ** (len(coeffs) - i - 1))
 
         return sum
 
-    def get_ermite_coeffs(self, coeff_table: list[list[float]]) -> list[float]:
-        n = len(coeff_table[0])*3
-        xlen = len(coeff_table[0])
+    def get_ermite_coeffs(self, nodes: list[DataSlice]) -> list[float]:
+        n: int = 0
+        for slice in nodes:
+            n += 1
+            if slice.derivative:
+                n += 1
+            if slice.double_derivative:
+                n += 1
 
         matrix = [[0.0 for _ in range(n)] for _ in range(n)]
         b_col = [[0.0] for _ in range(n)]
 
-        for i in range(xlen):
+        cur: int = 0
+        for slice in nodes:
             for j in range(n):
-                if (n - j - 1) < 0:
-                    continue
-                matrix[i][j] = coeff_table[0][i] ** (n - j - 1)
-            b_col[i][0] = coeff_table[1][i]
+                matrix[cur][j] = slice.x ** (n - j - 1)
+            b_col[cur][0] = slice.y
+            cur += 1
 
-        for i in range(xlen):
+        for slice in nodes:
+            if slice.derivative is None:
+                continue
+
             for j in range(n):
                 if (n - j - 2) < 0:
                     continue
-                matrix[i +
-                       xlen][j] = (n - j - 1) * coeff_table[0][i] ** (n - j - 2)
-            b_col[i + xlen][0] = coeff_table[2][i]
+                matrix[cur][j] = (n - j - 1) * slice.x ** (n - j - 2)
+            b_col[cur][0] = slice.derivative
+            cur += 1
 
-        for i in range(xlen):
+        for slice in nodes:
+            if slice.double_derivative is None:
+                continue
+
             for j in range(n):
-                if (n - j - 3) < 0:
+                if (n - j - 2) < 0:
                     continue
-                matrix[i +
-                       xlen * 2][j] = (n - j - 1) * (n - j - 2) * coeff_table[0][i] ** (n - j - 3)
-            b_col[i + xlen * 2][0] = coeff_table[3][i]
+                matrix[cur][j] = (n - j - 1) * (n - j - 2) * \
+                    slice.x ** (n - j - 3)
+            b_col[cur][0] = slice.double_derivative
+            cur += 1
 
         tmp = np.matrix(matrix)
 
@@ -202,18 +185,128 @@ class Model:
 
         return [result[i][0] for i in range(n)]
 
-    def matrix_mul(self, m1: list[list[float]], m2: list[list[float]]) -> list[list[float]]:
-        m = len(m1)                                            # a: m × n
-        n = len(m2)                                            # b: n × k
-        k = len(m2[0])
+    def get_root_by_newton(self):
+        if self.newton_deg == 0:
+            return print("Не определена степень полинома Ньютона")
+        if len(self.data_list) < self.newton_deg+1:
+            return print("Для данной степени полинома ньютона недостаточно входных данных функции")
 
-        res = [[0.0 for _ in range(k)] for _ in range(m)]    # c: m × k
+        x = 0
 
-        for i in range(m):
-            for j in range(k):
-                res[i][j] = sum(m1[i][kk] * m2[kk][j] for kk in range(n))
+        pos = 0
+        minmod = abs(self.data_list[pos].x)
+
+        for i in range(len(self.data_list)):
+            if abs(self.data_list[pos].x) < minmod:
+                minmod = abs(self.data_list[pos].x)
+                pos = i
+
+        index_low = pos - (self.newton_deg + 1) // 2
+        index_high = pos + (self.newton_deg + 1) // 2 + \
+            (self.newton_deg + 1) % 2
+
+        if index_low < 0:
+            index_high -= index_low
+            index_low = 0
+
+        if index_high >= len(self.data_list) - 1:
+            index_low -= index_high - len(self.data_list) + 1
+            index_high = len(self.data_list) - 1
+
+        coeff_table: list[list[float]] = [
+            [s.y for s in self.data_list[index_low: index_high]],
+            [s.x for s in self.data_list[index_low: index_high]],
+        ]
+
+        for _ in range(self.newton_deg):
+            coeff_table.append([])
+
+        for i in range(self.newton_deg):
+            for j in range(self.newton_deg - i):
+                coeff_table[i+2].append(
+                    (coeff_table[i+1][j] - coeff_table[i+1][j+1]) /
+                    (coeff_table[0][j] - coeff_table[0][j+i+1])
+                )
+
+        if DEBUG:
+            print("Таблица коэф-тов:")
+            for i, line in enumerate(coeff_table):
+                if (i < 2):
+                    print(" x:" if i == 0 else " y:", end='\t')
+                else:
+                    print(f"y{i-2}:", end='\t')
+
+                for item in line:
+                    print(f"{item:.3}", end='\t')
+                print()
+
+        res = coeff_table[1][0]
+        xcoef: float = 1.0
+
+        for i in range(self.newton_deg):
+            xcoef *= x - coeff_table[0][i]
+            res += coeff_table[i+2][0] * xcoef
 
         return res
+
+    def get_root_by_ermite(self):
+        if self.ermite_nodes == 0:
+            return print("Не определено кол-во точек для полинома Эрмита")
+        if len(self.data_list) < self.ermite_nodes:
+            return print("Для данного количества точек полинома Эрмита недостаточно входных данных функции")
+
+        x = 0
+
+        pos = 0
+        minmod = abs(self.data_list[pos].x)
+
+        for i in range(len(self.data_list)):
+            if abs(self.data_list[pos].x) < minmod:
+                minmod = abs(self.data_list[pos].x)
+                pos = i
+
+        index_low = pos - (self.ermite_nodes) // 2
+        index_high = pos + (self.ermite_nodes) // 2 + \
+            (self.ermite_nodes) % 2
+
+        if index_low < 0:
+            index_high -= index_low
+            index_low = 0
+
+        if index_high >= len(self.data_list) - 1:
+            index_low -= index_high - len(self.data_list) + 1
+            index_high = len(self.data_list) - 1
+
+        nodes: list[DataSlice] = deepcopy(
+            self.data_list[index_low: index_high])
+
+        for node in nodes:
+            tmp = node.x
+            node.x = node.y
+            node.y = tmp
+
+            if node.derivative is not None:
+                node.derivative = 1 / \
+                    node.derivative if abs(
+                        node.derivative) > EPS else None
+
+            if node.double_derivative is not None:
+                node.double_derivative = 1 / \
+                    node.double_derivative if abs(
+                        node.double_derivative) > EPS else None
+
+        coeffs = self.get_ermite_coeffs(nodes)
+
+        sum = 0
+
+        if DEBUG:
+            print("ermite coeffs")
+            print(coeffs)
+
+        for i in range(len(coeffs)):
+            sum += coeffs[i] * (x ** (len(coeffs) - i - 1))
+
+        return sum
 
 
 class Controller:
@@ -227,14 +320,23 @@ class View:
         self.controller: Controller = controller
         self.running = False
         self.options = {
-            "1": self.read_from_file,  # read data
-            "2": self.read_newton_deg,  # newton deg
-            "3": self.read_ermite_nodes,  # ermite nodes
-            "4": self.approx_by_newton,  # newton by x
-            "5": self.approx_by_ermite,  # ermite by x
-            "6": ...,  # roots
-            "7": ...,  # table
+            "1": self.read_from_file,       # read data
+            "2": self.read_newton_deg,      # newton deg
+            "3": self.read_ermite_nodes,    # ermite nodes
+            "4": self.approx_by_newton,     # newton by x
+            "5": self.approx_by_ermite,     # ermite by x
+            "6": self.get_roots,            # roots
+            "7": self.test_both,                       # table
         }
+
+    def get_roots(self):
+        newton_root: float | None = self.model.get_root_by_newton()
+        ermite_root: float | None = self.model.get_root_by_ermite()
+
+        if newton_root is not None:
+            print(f"Корень по Ньютону: {newton_root:.6}")
+        if ermite_root is not None:
+            print(f"Корень по Эрмиту:  {ermite_root:.6}")
 
     def print_status(self):
         print("Текущий статус:\n" +
@@ -312,7 +414,7 @@ class View:
             return print("Сначала введите кол-во узлов")
         if not len(self.model.data_list):
             return print("Сначала добавьте входные данные")
-        if self.model.newton_deg+1 > len(self.model.data_list):
+        if self.model.ermite_nodes > len(self.model.data_list):
             return print("Кол-во узлов больше количества входных данных")
 
         try:
@@ -324,6 +426,30 @@ class View:
         print(f"Результат аппроксимации: {res:.6}")
 
         return res
+
+    def test_both(self):
+        if not len(self.model.data_list):
+            return print("Сначала добавьте входные данные")
+        if 5+1 > len(self.model.data_list):
+            return print("Степень полинома Ньютона больше количества входных данных")
+        if 5 > len(self.model.data_list):
+            return print("Кол-во узлов больше количества входных данных")
+
+        try:
+            x = float(input("Введите значение x: "))
+        except ValueError:
+            return print("Не удалось считать значение x")
+
+        print(f"{'N':^3}|{'Ньютон':^20}|{'Эрмит':^20}")
+
+        for i in range(5):
+            self.model.ermite_nodes = i + 1
+            self.model.newton_deg = i + 1
+
+            new = self.model.approx_by_newton(x)
+            erm = self.model.approx_by_ermite(x)
+
+            print(f"""{i+1:^3}|{f"{new:.6}":^20}|{f"{erm:.6}":^20}""")
 
     def menu_loop(self):
         while self.running:
@@ -357,7 +483,7 @@ def read_filename() -> str:
 
 def parse_line(line: str) -> DataSlice | None:
     data = [*map(float, line.strip().split())]
-    if len(data) != 4:
+    if len(data) < 2 or len(data) > 4:
         if DEBUG:
             print("Строка пропущена: ", *data)
         return None
