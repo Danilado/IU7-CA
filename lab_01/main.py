@@ -6,11 +6,11 @@
 from copy import deepcopy
 
 from typing import Optional
-from copy import copy
-import numpy as np
 
 DEBUG = False
 EPS = 1e-6
+
+DATAPATH = "/home/gospodin/Documents/develop/IU7-CA/lab_01/data/testset.txt"
 
 
 class DataSlice:
@@ -26,8 +26,8 @@ class DataSlice:
 class Model:
     def __init__(self) -> None:
         self.data_list: list[DataSlice] = []
-        self.newton_deg: int = 0
-        self.ermite_nodes: int = 0
+        self.newton_deg: int = 5
+        self.ermite_nodes: int = 5
 
     def push_slice(self, data: DataSlice):
         if data:
@@ -123,67 +123,70 @@ class Model:
 
         coeffs = self.get_ermite_coeffs(nodes)
 
-        sum = 0
+        n = len(coeffs[0])
 
-        if DEBUG:
-            print(coeffs)
+        res = coeffs[1][0]
+        xcoef: float = 1.0
 
-        for i in range(len(coeffs)):
-            sum += coeffs[i] * (x ** (len(coeffs) - i - 1))
+        for i in range(n-1):
+            xcoef *= x - coeffs[0][i]
+            res += coeffs[i+2][0] * xcoef
 
-        return sum
+        return res
 
     def get_ermite_coeffs(self, nodes: list[DataSlice]) -> list[float]:
         n: int = 0
         for slice in nodes:
             n += 1
-            if slice.derivative:
+            if slice.derivative is not None:
                 n += 1
-            if slice.double_derivative:
+            if slice.double_derivative is not None:
                 n += 1
 
-        matrix = [[0.0 for _ in range(n)] for _ in range(n)]
-        b_col = [[0.0] for _ in range(n)]
+        table: list[list[float | None]] = \
+            [
+                [None for _ in range(n)],
+                [None for _ in range(n)]
+        ]
+
+        for i in range(n - 1):
+            table.append([None for _ in range(n - i - 1)])
 
         cur: int = 0
         for slice in nodes:
-            for j in range(n):
-                matrix[cur][j] = slice.x ** (n - j - 1)
-            b_col[cur][0] = slice.y
+            table[0][cur] = slice.x
+            table[1][cur] = slice.y
             cur += 1
+            if slice.derivative is not None:
+                table[0][cur] = slice.x
+                table[1][cur] = slice.y
+                table[2][cur - 1] = slice.derivative
+                cur += 1
+            if slice.double_derivative is not None:
+                table[0][cur] = slice.x
+                table[1][cur] = slice.y
+                table[2][cur - 1] = slice.derivative
+                table[3][cur - 2] = slice.double_derivative
+                cur += 1
 
-        for slice in nodes:
-            if slice.derivative is None:
-                continue
+        for i in range(n - 1):
+            for j in range(n - i - 1):
+                if table[i + 2][j] is None:
+                    table[i + 2][j] = (
+                        (table[i+1][j] - table[i+1][j+1]) /
+                        (table[0][j] - table[0][j + i + 1])
+                    )
 
-            for j in range(n):
-                if (n - j - 2) < 0:
-                    continue
-                matrix[cur][j] = (n - j - 1) * slice.x ** (n - j - 2)
-            b_col[cur][0] = slice.derivative
-            cur += 1
+        if DEBUG:
+            for line in table:
+                for item in line:
+                    if item is None:
+                        print("None", end="\t")
+                    else:
+                        print(f"{item:0.4}", end="\t")
+                print("")
 
-        for slice in nodes:
-            if slice.double_derivative is None:
-                continue
-
-            for j in range(n):
-                if (n - j - 2) < 0:
-                    continue
-                matrix[cur][j] = (n - j - 1) * (n - j - 2) * \
-                    slice.x ** (n - j - 3)
-            b_col[cur][0] = slice.double_derivative
-            cur += 1
-
-        tmp = np.matrix(matrix)
-
-        inv = np.linalg.inv(tmp)
-        b = np.matrix(b_col)
-
-        result = np.matmul(inv, b)
-        result = result.tolist()
-
-        return [result[i][0] for i in range(n)]
+        return table
 
     def get_root_by_newton(self):
         if self.newton_deg == 0:
@@ -297,16 +300,16 @@ class Model:
 
         coeffs = self.get_ermite_coeffs(nodes)
 
-        sum = 0
+        n = len(coeffs[0])
 
-        if DEBUG:
-            print("ermite coeffs")
-            print(coeffs)
+        res = coeffs[1][0]
+        xcoef: float = 1.0
 
-        for i in range(len(coeffs)):
-            sum += coeffs[i] * (x ** (len(coeffs) - i - 1))
+        for i in range(n):
+            xcoef *= x - coeffs[0][i]
+            res += coeffs[i+2][0] * xcoef
 
-        return sum
+        return res
 
 
 class Controller:
@@ -374,7 +377,7 @@ class View:
         self.model.ermite_nodes = newnodes
 
     def read_from_file(self):
-        filename = read_filename()
+        filename = DATAPATH if DATAPATH != "" else read_filename()
         try:
             with open(filename, "r") as f:
                 lines = f.readlines()
@@ -495,5 +498,8 @@ if __name__ == "__main__":
     model: Model = Model()
     controller: Controller = Controller(model)
     view: View = View(model, controller)
+
+    if (DATAPATH):
+        view.read_from_file()
 
     view.run()
