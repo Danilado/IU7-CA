@@ -5,18 +5,20 @@
 
 from copy import deepcopy
 
-from typing import Optional
+from typing import Optional, Tuple
 
 DEBUG = False
 EPS = 1e-6
 
-DATAPATH = "/home/gospodin/Documents/develop/IU7-CA/lab_01/data/testset.txt"
+DATAPATH = r"D:\develop\IU7-CA\lab_01\data\testset.txt"
+DATA1PATH = r"D:\develop\IU7-CA\lab_01\data\func1.txt"
+DATA2PATH = r"D:\develop\IU7-CA\lab_01\data\func2.txt"
 
 
 class DataSlice:
     def __init__(self, x: float, y: float,
-                 derivative: Optional[float],
-                 double_derivative: Optional[float]) -> None:
+                 derivative: Optional[float] = None,
+                 double_derivative: Optional[float] = None) -> None:
         self.x: float = x
         self.y: float = y
         self.derivative: float | None = derivative
@@ -28,6 +30,9 @@ class Model:
         self.data_list: list[DataSlice] = []
         self.newton_deg: int = 5
         self.ermite_nodes: int = 5
+
+        self.data1: list[DataSlice] = []
+        self.data2: list[DataSlice] = []
 
     def push_slice(self, data: DataSlice):
         if data:
@@ -46,7 +51,7 @@ class Model:
             return print("Для данной степени полинома ньютона недостаточно входных данных функции")
 
         pos = 0
-        while self.data_list[pos].x < x and pos < len(self.data_list):
+        while pos < len(self.data_list) and self.data_list[pos].x < x:
             pos += 1
 
         index_low = pos - (self.newton_deg + 1) // 2
@@ -197,11 +202,11 @@ class Model:
         x = 0
 
         pos = 0
-        minmod = abs(self.data_list[pos].x)
+        minmod = abs(self.data_list[pos].y)
 
         for i in range(len(self.data_list)):
-            if abs(self.data_list[pos].x) < minmod:
-                minmod = abs(self.data_list[pos].x)
+            if abs(self.data_list[i].y) < minmod:
+                minmod = abs(self.data_list[i].y)
                 pos = i
 
         index_low = pos - (self.newton_deg + 1) // 2
@@ -213,8 +218,8 @@ class Model:
             index_low = 0
 
         if index_high >= len(self.data_list) - 1:
-            index_low -= index_high - len(self.data_list) + 1
-            index_high = len(self.data_list) - 1
+            index_low -= index_high - len(self.data_list)
+            index_high = len(self.data_list)
 
         coeff_table: list[list[float]] = [
             [s.y for s in self.data_list[index_low: index_high]],
@@ -231,7 +236,7 @@ class Model:
                     (coeff_table[0][j] - coeff_table[0][j+i+1])
                 )
 
-        if DEBUG:
+        if True:
             print("Таблица коэф-тов:")
             for i, line in enumerate(coeff_table):
                 if (i < 2):
@@ -305,11 +310,33 @@ class Model:
         res = coeffs[1][0]
         xcoef: float = 1.0
 
-        for i in range(n):
+        for i in range(n-1):
             xcoef *= x - coeffs[0][i]
             res += coeffs[i+2][0] * xcoef
 
         return res
+
+    def find_system_root(self) -> Tuple[float, float]:
+        res: list[DataSlice] = []
+
+        for i in [i/10 for i in range(1, 11)]:
+            x = i
+            self.data_list = self.data2
+            y = self.approx_by_newton(x)
+            self.data_list = self.data1
+            y -= self.approx_by_newton(x)
+
+            res.append(DataSlice(x, y, None, None))
+
+        for slice in res:
+            print(slice.x, slice.y, slice.derivative,
+                  slice.double_derivative, sep="\t")
+
+        self.data_list = res
+        x = self.get_root_by_newton()
+        self.data_list = self.data1
+
+        return (x, self.approx_by_newton(x))
 
 
 class Controller:
@@ -330,6 +357,7 @@ class View:
             "5": self.approx_by_ermite,     # ermite by x
             "6": self.get_roots,            # roots
             "7": self.test_both,                       # table
+            "8": self.get_sys_root,
         }
 
     def get_roots(self):
@@ -393,6 +421,29 @@ class View:
             return print("Не удалось считать ни одной строки с данными")
 
         self.model.sort_slices()
+
+    def read_funcs(self):
+        try:
+            with open(DATA1PATH, "r") as f:
+                lines = f.readlines()
+                for line in lines:
+                    l = parse_line(line)
+                    if l is None:
+                        continue
+                    self.model.data1.append(l)
+        except OSError:
+            return print("Не удалось открыть файл")
+
+        try:
+            with open(DATA2PATH, "r") as f:
+                lines = f.readlines()
+                for line in lines:
+                    l = parse_line(line)
+                    if l is None:
+                        continue
+                    self.model.data2.append(l)
+        except OSError:
+            return print("Не удалось открыть файл")
 
     def approx_by_newton(self):
         if not self.model.newton_deg:
@@ -465,12 +516,13 @@ class View:
                   "5: Получить приблизительное значение y(x) с помощью полинома Эрмита\n" +
                   "6: Найти корень с помощью обоих полиномов\n" +
                   "7: Построить таблицу сранения полиномов при заданном x\n" +
+                  "8: Найти корень системы\n" +
                   "0: Выход")
             option = input("> ")
 
             if option == "0":
                 self.running = False
-            elif len(option) > 1 or option not in "1234567":
+            elif len(option) > 1 or option not in "12345678":
                 continue
             else:
                 self.options[option]()
@@ -478,6 +530,13 @@ class View:
     def run(self):
         self.running = True
         self.menu_loop()
+
+    def get_sys_root(self):
+        self.read_funcs()
+
+        x, y = self.model.find_system_root()
+
+        print(x, y)
 
 
 def read_filename() -> str:
