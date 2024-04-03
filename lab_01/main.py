@@ -7,12 +7,12 @@ from copy import deepcopy
 
 from typing import Optional, Tuple
 
-DEBUG = False
+DEBUG = True
 EPS = 1e-6
 
-DATAPATH = r"D:\develop\IU7-CA\lab_01\data\testset.txt"
-DATA1PATH = r"D:\develop\IU7-CA\lab_01\data\func1.txt"
-DATA2PATH = r"D:\develop\IU7-CA\lab_01\data\func2.txt"
+DATAPATH = r"/home/gospodin/Documents/develop/IU7-CA/lab_01/data/func3.txt"
+DATA1PATH = r"/home/gospodin/Documents/develop/IU7-CA/lab_01/data/func1.txt"
+DATA2PATH = r"/home/gospodin/Documents/develop/IU7-CA/lab_01/data/func2.txt"
 
 
 class DataSlice:
@@ -54,17 +54,21 @@ class Model:
         while pos < len(self.data_list) and self.data_list[pos].x < x:
             pos += 1
 
+        print(pos)
+
         index_low = pos - (self.newton_deg + 1) // 2
         index_high = pos + (self.newton_deg + 1) // 2 + \
             (self.newton_deg + 1) % 2
+
+        print(index_low, index_high, "!!!!!!!!!!")
 
         if index_low < 0:
             index_high -= index_low
             index_low = 0
 
         if index_high >= len(self.data_list) - 1:
-            index_low -= index_high - len(self.data_list) + 1
-            index_high = len(self.data_list) - 1
+            index_low -= index_high - len(self.data_list)
+            index_high = len(self.data_list)
 
         coeff_table: list[list[float]] = [
             [s.x for s in self.data_list[index_low: index_high]],
@@ -109,7 +113,7 @@ class Model:
             return print("Для данного количества точек полинома Эрмита недостаточно входных данных функции")
 
         pos = 0
-        while self.data_list[pos].x < x and pos < len(self.data_list):
+        while pos < len(self.data_list) and self.data_list[pos].x < x:
             pos += 1
 
         index_low = pos - (self.ermite_nodes) // 2
@@ -121,8 +125,8 @@ class Model:
             index_low = 0
 
         if index_high >= len(self.data_list) - 1:
-            index_low -= index_high - len(self.data_list) + 1
-            index_high = len(self.data_list) - 1
+            index_low -= index_high - len(self.data_list)
+            index_high = len(self.data_list)
 
         nodes: list[DataSlice] = self.data_list[index_low: index_high]
 
@@ -171,7 +175,7 @@ class Model:
                 table[0][cur] = slice.x
                 table[1][cur] = slice.y
                 table[2][cur - 1] = slice.derivative
-                table[3][cur - 2] = slice.double_derivative
+                table[3][cur - 2] = slice.double_derivative/2
                 cur += 1
 
         for i in range(n - 1):
@@ -236,7 +240,7 @@ class Model:
                     (coeff_table[0][j] - coeff_table[0][j+i+1])
                 )
 
-        if True:
+        if DEBUG:
             print("Таблица коэф-тов:")
             for i, line in enumerate(coeff_table):
                 if (i < 2):
@@ -282,8 +286,8 @@ class Model:
             index_low = 0
 
         if index_high >= len(self.data_list) - 1:
-            index_low -= index_high - len(self.data_list) + 1
-            index_high = len(self.data_list) - 1
+            index_low -= index_high - len(self.data_list)
+            index_high = len(self.data_list)
 
         nodes: list[DataSlice] = deepcopy(
             self.data_list[index_low: index_high])
@@ -328,15 +332,91 @@ class Model:
 
             res.append(DataSlice(x, y, None, None))
 
-        for slice in res:
-            print(slice.x, slice.y, slice.derivative,
-                  slice.double_derivative, sep="\t")
+        if DEBUG:
+            for slice in res:
+                print(slice.x, slice.y, slice.derivative,
+                      slice.double_derivative, sep="\t")
 
         self.data_list = res
         x = self.get_root_by_newton()
         self.data_list = self.data1
 
         return (x, self.approx_by_newton(x))
+
+    def sort_slices(self):
+        self.data_list.sort(key=lambda d: d.x)
+
+    def get_rev_der_ermite(self, x):
+        if self.ermite_nodes == 0:
+            return print("Не определено кол-во точек для полинома Эрмита")
+        if len(self.data_list) < self.ermite_nodes:
+            return print("Для данного количества точек полинома Эрмита недостаточно входных данных функции")
+
+        pos = 0
+        minmod = abs(self.data_list[pos].x)
+
+        for i in range(len(self.data_list)):
+            if abs(self.data_list[pos].x) < minmod:
+                minmod = abs(self.data_list[pos].x)
+                pos = i
+
+        index_low = pos - (self.ermite_nodes) // 2
+        index_high = pos + (self.ermite_nodes) // 2 + \
+            (self.ermite_nodes) % 2
+
+        if index_low < 0:
+            index_high -= index_low
+            index_low = 0
+
+        if index_high >= len(self.data_list) - 1:
+            index_low -= index_high - len(self.data_list)
+            index_high = len(self.data_list)
+
+        nodes: list[DataSlice] = deepcopy(
+            self.data_list[index_low: index_high])
+
+        newnodes = []
+
+        for node in nodes:
+            if (node.derivative != 0 or node.derivative is None) and (node.double_derivative != 0 or node.double_derivative is None):
+                newnodes.append(node)
+
+        nodes = newnodes
+
+        for node in nodes:
+            tmp = node.x
+            node.x = node.y
+            node.y = tmp
+
+            if node.derivative is not None:
+                node.y = 1 / \
+                    node.derivative if abs(
+                        node.derivative) > EPS else None
+                node.derivative = None
+
+            if node.double_derivative is not None:
+                node.y = 1 / \
+                    node.double_derivative if abs(
+                        node.double_derivative) > EPS else None
+                node.double_derivative = None
+
+        for node in nodes:
+            print(node.x, node.y, node.derivative, node.double_derivative)
+
+        coeffs = self.get_ermite_coeffs(nodes)
+
+        print(coeffs)
+
+        n = len(coeffs[0])
+
+        res = coeffs[1][0]
+        xcoef: float = 1.0
+
+        for i in range(n-1):
+            xcoef *= x - coeffs[0][i]
+            res += coeffs[i+2][0] * xcoef
+
+        return res
 
 
 class Controller:
@@ -358,6 +438,7 @@ class View:
             "6": self.get_roots,            # roots
             "7": self.test_both,                       # table
             "8": self.get_sys_root,
+            "9": self.get_inv_der,
         }
 
     def get_roots(self):
@@ -406,6 +487,7 @@ class View:
 
     def read_from_file(self):
         filename = DATAPATH if DATAPATH != "" else read_filename()
+        self.model.data_list.clear()
         try:
             with open(filename, "r") as f:
                 lines = f.readlines()
@@ -424,6 +506,7 @@ class View:
 
     def read_funcs(self):
         try:
+            self.model.data1.clear()
             with open(DATA1PATH, "r") as f:
                 lines = f.readlines()
                 for line in lines:
@@ -431,10 +514,12 @@ class View:
                     if l is None:
                         continue
                     self.model.data1.append(l)
+            self.model.data1.sort(key=lambda d: d.x)
         except OSError:
             return print("Не удалось открыть файл")
 
         try:
+            self.model.data2.clear()
             with open(DATA2PATH, "r") as f:
                 lines = f.readlines()
                 for line in lines:
@@ -442,6 +527,7 @@ class View:
                     if l is None:
                         continue
                     self.model.data2.append(l)
+            self.model.data2.sort(key=lambda d: d.x)
         except OSError:
             return print("Не удалось открыть файл")
 
@@ -477,6 +563,24 @@ class View:
             return print("Не удалось считать значение x")
 
         res = self.model.approx_by_ermite(x)
+        print(f"Результат аппроксимации: {res:.6}")
+
+        return res
+
+    def get_inv_der(self):
+        if not self.model.ermite_nodes:
+            return print("Сначала введите кол-во узлов")
+        if not len(self.model.data_list):
+            return print("Сначала добавьте входные данные")
+        if self.model.ermite_nodes > len(self.model.data_list):
+            return print("Кол-во узлов больше количества входных данных")
+
+        try:
+            x = float(input("Введите значение x: "))
+        except ValueError:
+            return print("Не удалось считать значение x")
+
+        res = self.model.get_rev_der_ermite(x)
         print(f"Результат аппроксимации: {res:.6}")
 
         return res
@@ -517,12 +621,15 @@ class View:
                   "6: Найти корень с помощью обоих полиномов\n" +
                   "7: Построить таблицу сранения полиномов при заданном x\n" +
                   "8: Найти корень системы\n" +
+                  "9: Найти обратную производную в точке\n" +
                   "0: Выход")
             option = input("> ")
 
             if option == "0":
                 self.running = False
-            elif len(option) > 1 or option not in "12345678":
+            elif option == "":
+                continue
+            elif len(option) > 1 or option not in "123456789":
                 continue
             else:
                 self.options[option]()
