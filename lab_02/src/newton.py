@@ -18,7 +18,8 @@ def newton_2nd_deg(pts: Points, x: float) -> float:
 
 
 def newton_interpolate(x: float, deg: int, pts: Points):
-    data = pts.get_interval_slice(x, deg + 1)
+    _, ptprev = pts.find_prev_point(x)
+    data = pts.get_interval_slice(ptprev.x, deg + 1)
 
     coeff_table: list[list[float]] = [
         [s.x for s in data],

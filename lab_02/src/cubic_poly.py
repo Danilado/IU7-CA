@@ -8,5 +8,4 @@ class CubicPolynome:
 
     def get(self, x) -> float:
         xoff = x - self.x0
-
-        return self.a * (xoff**3) + self.b * (xoff**2) + self.c * xoff + self.d
+        return self.a + self.b * xoff + self.c * (xoff**2) + self.d * (xoff**3)

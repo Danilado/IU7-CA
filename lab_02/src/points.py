@@ -66,6 +66,17 @@ class Points:
 
         return i, self.data[i]
 
+    def find_next_point(self, x) -> {int, Point}:
+        i = 0
+        while i < len(self.data) and x > self.data[i].x:
+            i += 1
+
+        i += 1
+        if (i >= len(self.data)):
+            i -= 1
+
+        return i, self.data[i]
+
     def __str__(self) -> str:
         res = ""
         res += "x:\t"
