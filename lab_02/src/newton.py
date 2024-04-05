@@ -5,16 +5,36 @@ Points = points.Points
 
 
 def newton_2nd_deg(pts: Points, x: float) -> float:
-    data = pts.get_interval_slice(x, 3)
-    dds = []
-    for pt in data:
-        dds.append(pt.y)
+    _, ptprev = pts.find_prev_point(x)
+    data = pts.get_interval_slice(ptprev.x, 2 + 1)
 
-    for i in [1, 2]:
-        for j in range(2, i - 1, -1):
-            dds[j] = (dds[j] - dds[j - 1]) / (data[j].x - data[j - i].x)
+    coeff_table: list[list[float]] = [
+        [s.x for s in data],
+        [s.y for s in data],
+    ]
 
-    return 2 * dds[2]
+    for _ in range(2):
+        coeff_table.append([])
+
+    for i in range(2):
+        for j in range(2 - i):
+            coeff_table[i + 2].append(
+                (coeff_table[i + 1][j] - coeff_table[i + 1][j + 1])
+                / (coeff_table[0][j] - coeff_table[0][j + i + 1])
+            )
+
+    # print("Таблица коэф-тов:")
+    # for i, line in enumerate(coeff_table):
+    #     if (i < 2):
+    #         print(" x:" if i == 0 else " y:", end='\t')
+    #     else:
+    #         print(f"y{i-2}:", end='\t')
+
+    #     for item in line:
+    #         print(f"{item:.3f}", end='\t')
+    #     print()
+
+    return 2 * coeff_table[2][0] + coeff_table[3][0] * (6 * x - 2 * (data[0].x + data[1].x + data[2].x))
 
 
 def newton_interpolate(x: float, deg: int, pts: Points):

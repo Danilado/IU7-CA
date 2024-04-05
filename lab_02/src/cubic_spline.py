@@ -24,31 +24,29 @@ class CubicSpline:
     def calc_c(self, pts: Points):
         data = pts.data
         n = len(data)
-        c = [0 for _ in range(n)]
+        c = [0 for _ in range(n - 1)]
         c[0] = self.c_0 / 2
-        c[-1] = self.c_n / 2
+        # c[-1] = self.c_n / 2
 
-        ksi = [0, 0]
-        theta = [0, 0]
+        ksiarr = [0, 0]
+        thetaarr = [0, self.c_0 / 2]
 
         for i in range(2, n):
             h1 = data[i].x - data[i - 1].x
             h2 = data[i - 1].x - data[i - 2].x
 
-            phi = 3 * ((data[i].y - data[i - 1].y) /
-                       h1 - (data[i - 1].y - data[i - 2].y) / h2)
+            ksiarr.append(ksi(ksiarr[-1], h1, h2))
+            dy = data[i].y - data[i - 1].y
+            dy1 = data[i - 1].y - data[i - 2].y
+            thetaarr.append(theta(dy, dy1, h1, h2, thetaarr[-1], ksiarr[-2]))
 
-            ksi_cur = - h1 / (h2 * ksi[i - 1] + 2 * (h2 + h1))
-            theta_cur = (phi - h1 * theta[i - 1]) / \
-                (h1 * ksi[i - 1] + 2 * (h2 + h1))
+        # print("ksi:", *ksiarr, sep="\t")
+        # print("theta:", *thetaarr, sep="\t")
 
-            ksi.append(ksi_cur)
-            theta.append(theta_cur)
-
-        c[-2] = theta[len(theta) - 1]
+        c[-1] = thetaarr[-1] + (self.c_n / 2) * ksiarr[-1]
 
         for i in range(n - 2, 0, -1):
-            c[i - 1] = ksi[i] * c[i] + theta[i]
+            c[i - 1] = ksiarr[i] * c[i] + thetaarr[i]
 
         self.c = c
 
@@ -60,17 +58,17 @@ class CubicSpline:
         n = len(data)
         b = []
 
-        for i in range(1, n - 1):
-            h = data[i].x - data[i - 1].x
+        for i in range(n - 2):
+            h = data[i + 1].x - data[i].x
 
-            b_cur = (data[i].y - data[i - 1].y) / \
-                h - (h * (self.c[i] + 2 * self.c[i - 1])) / 3
+            b_cur = (data[i + 1].y - data[i].y) / \
+                h - (h * (self.c[i + 1] + 2 * self.c[i])) / 3
 
             b.append(b_cur)
 
         h = data[n - 1].x - data[n - 2].x
         b.append(
-            (data[n - 1].y - data[n - 2].y) / h - (h * 2 * self.c[i]) / 3)
+            (data[-1].y - data[- 2].y) / h - (h * (self.c_n/2 + 2 * self.c[-1])) / 3)
 
         self.b = b
 
@@ -83,15 +81,15 @@ class CubicSpline:
 
         n = len(data)
 
-        for i in range(1, n - 1):
-            h = data[i].x - data[i - 1].x
+        for i in range(n - 2):
+            h = data[i + 1].x - data[i].x
 
-            d_cur = (self.c[i] - self.c[i - 1]) / (3 * h)
+            d_cur = (self.c[i + 1] - self.c[i]) / (3 * h)
 
             d.append(d_cur)
 
-        h = data[n - 1].x - data[n - 2].x
-        d.append((- self.c[i]) / (3 * h))
+        h = data[-1].x - data[-2].x
+        d.append(((self.c_n / 2) - self.c[-1]) / (3 * h))
 
         self.d = d
 
@@ -101,19 +99,36 @@ class CubicSpline:
         self.calc_b(pts)
         self.calc_d(pts)
 
-        print("a:", *self.a, sep="\t")
-        print("b:", *self.b, sep="\t")
-        print("c:", *self.c, sep="\t")
-        print("d:", *self.d, sep="\t")
+        # print("a:", *self.a, sep="\t")
+        # print("b:", *self.b, sep="\t")
+        # print("c:", *self.c, sep="\t")
+        # print("d:", *self.d, sep="\t")
+
+        # print(len(self.a))
+        # print(len(self.b))
+        # print(len(self.c))
+        # print(len(self.d))
 
     def get_cubic_poly(self, pts: Points, x: float) -> CubicPolynome:
         if len(self.c) == 0:
             self.calc_coeffs(pts)
 
-        pos = 1
-        while (pos < len(pts.data) and pts.data[pos].x < x):
+        pos = 0
+        while (pos < len(pts.data) - 2 and pts.data[pos+1].x < x):
             pos += 1
-        pos -= 1
 
         # print(i)
-        return CubicPolynome(self.a[pos], self.b[pos], self.c[pos], self.d[pos], pts.data[pos].x)
+        return CubicPolynome(
+            self.a[pos],
+            self.b[pos],
+            self.c[pos],
+            self.d[pos],
+            pts.data[pos].x,)
+
+
+def ksi(ksi1, h1, h2):
+    return - h1 / (2 * (h1 + h2) + h2 * ksi1)
+
+
+def theta(dy1, dy2, h1, h2, teta1, ksi1):
+    return (3 * (dy1/h1 - dy2/h2) - h2 * teta1) / (h2 * ksi1 + 2 * (h1 + h2))

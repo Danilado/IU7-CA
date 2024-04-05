@@ -6,12 +6,16 @@ class Points:
     def __init__(self, init_data: list[Point] = []) -> None:
         self.data: list[Point] = init_data
 
+    def sort_data(self):
+        self.data.sort(key=lambda p: p.x)
+
     def add_point(self, p: Point):
         self.data.append(p)
 
     def parse_table(self, t: list[list[float]]):
         for i in range(len(t[0])):
             self.data.append(Point(t[0][i], t[1][i]))
+        self.sort_data()
 
     def find_interval(self, x: float, length: int) -> {int, int}:
         closest_i = 0, 99999999999999
@@ -61,7 +65,7 @@ class Points:
 
     def find_prev_point(self, x) -> {int, Point}:
         i = 0
-        while i < len(self.data) and x > self.data[i].x:
+        while i < len(self.data) - 1 and x > self.data[i].x:
             i += 1
 
         return i, self.data[i]
