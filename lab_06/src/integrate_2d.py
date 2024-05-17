@@ -1,6 +1,6 @@
-from typing import Callable
+from typing import Callable, Optional
 from .least_square import LeastSquare
-from math import exp, log
+from math import exp, log, sqrt
 
 
 def integrate_2d(
@@ -38,7 +38,7 @@ def integrate_2d(
 
         x_line = x_values[0:len(line)]
 
-        _f1 = LeastSquare(x_line, line, [], len(x_line))
+        _f1 = LeastSquare(x_line, line, [], 4)
 
         def f1(x: float) -> float:
             return exp(_f1(x))
@@ -49,6 +49,54 @@ def integrate_2d(
         x_integrals.append(x_integral_f(x_start, x_end, deg_x, f1))
 
     y_line = y_values[0:len(x_integrals)]
+
+    print("y values        : ", end="")
+    print(*[f"{y:+4.2f}" for y in y_line], sep="\t\t")
+    print("integral values : ", end="")
+    print(*[f"{integral:+10.8f}" for integral in x_integrals], sep="\t")
+    print()
+
+    f2 = LeastSquare(y_line,
+                     x_integrals, [], 4)
+
+    y_min = y_line[0]
+    y_max = y_line[-1]
+
+    return y_integral_f(y_min, y_max, deg_y, f2)
+
+
+def integrate_2d_concrete(
+        x_values: list[float],
+        y_values: list[float],
+        concrete_function: Callable,
+        limits_checker: Callable[[float, float], bool],
+        x_limit_getter: Callable,
+        x_integral_f: Callable,
+        y_integral_f: Callable,
+        deg_x: int,
+        deg_y: int,
+):
+    x_integrals: list[float] = []
+    y_line = []
+    for y in y_values:
+        x_start = x_limit_getter(y)
+        if (x_start == sqrt(y)):
+            x_end = sqrt(y)
+            x_start = - sqrt(y)
+        else:
+            x_end = x_values[-1]
+
+        if not limits_checker(x_start, y):
+            continue
+
+        def f1(x: float) -> float:
+            return concrete_function(x, y)
+
+        if abs(x_end - x_start) < 1e-6:
+            continue
+
+        y_line.append(y)
+        x_integrals.append(x_integral_f(x_start, x_end, deg_x, f1))
 
     print("y values        : ", end="")
     print(*[f"{y:+4.2f}" for y in y_line], sep="\t\t")
